@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
+import { VideoWebhookDto } from './dto/video-webhook.dto';
 import { VideosService } from './videos.service';
 
 @Controller('videos')
@@ -38,5 +39,10 @@ export class VideosController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.videosService.remove(id);
+  }
+
+  @Post('webhook')
+  async handleWebhook(@Body() videoWebhookDto: VideoWebhookDto) {
+    return this.videosService.handleTranscoderWebhook(videoWebhookDto);
   }
 }

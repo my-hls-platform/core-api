@@ -4,6 +4,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
+import { VideoWebhookDto } from './dto/video-webhook.dto';
 
 @Injectable()
 export class VideosService {
@@ -72,6 +73,24 @@ export class VideosService {
     if (!video) throw new NotFoundException(`Video with id ${id} not found`);
     return this.prisma.video.delete({
       where: { id },
+    });
+  }
+
+  async handleTranscoderWebhook(payload: VideoWebhookDto) {
+    if (payload['detail-type'] !== 'Video.Transcoded') return { skipped: true };
+    const { originalKey, hlsUrl, status } = payload.detail;
+    const videoId = originalKey.split('-')[0];
+    const fullCloudFrontUrl = `${process.env.CLOUDFRONT_URL}/${hlsUrl}`;
+    console.log(
+      `Webhook received: Video ${videoId} is ${status}. Updating database...`,
+    );
+
+    return this.prisma.video.update({
+      where: { id: videoId },
+      data: {
+        status: 'READY',
+        hlsUrl: fullCloudFrontUrl,
+      },
     });
   }
 }
