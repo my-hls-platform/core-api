@@ -1,17 +1,21 @@
-import { IsNotEmpty, IsObject, IsString } from 'class-validator';
+import { IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
 
-class TranscoderWebhookDetail {
+class AwsWebhookDetail {
   @IsString()
-  @IsNotEmpty()
-  originalKey: string;
-
-  @IsString()
-  @IsNotEmpty()
-  hlsUrl: string;
+  @IsOptional()
+  originalKey?: string;
 
   @IsString()
-  @IsNotEmpty()
-  status: string;
+  @IsOptional()
+  hlsUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
 }
 
 export class VideoWebhookDto {
@@ -21,5 +25,5 @@ export class VideoWebhookDto {
 
   @IsObject()
   @IsNotEmpty()
-  detail: TranscoderWebhookDetail;
+  detail: AwsWebhookDetail;
 }

@@ -76,21 +76,47 @@ export class VideosService {
     });
   }
 
-  async handleTranscoderWebhook(payload: VideoWebhookDto) {
-    if (payload['detail-type'] !== 'Video.Transcoded') return { skipped: true };
-    const { originalKey, hlsUrl, status } = payload.detail;
-    const videoId = originalKey.split('-')[0];
-    const fullCloudFrontUrl = `${process.env.CLOUDFRONT_URL}/${hlsUrl}`;
-    console.log(
-      `Webhook received: Video ${videoId} is ${status}. Updating database...`,
-    );
+  async handleAwsWebhook(payload: VideoWebhookDto) {
+    const detailType = payload['detail-type'];
 
-    return this.prisma.video.update({
-      where: { id: videoId },
-      data: {
-        status: 'READY',
-        hlsUrl: fullCloudFrontUrl,
-      },
-    });
+    if (detailType === 'Video.Transcoded') {
+      const { originalKey, hlsUrl } = payload.detail;
+      if (!originalKey || !hlsUrl)
+        return { skipped: true, reason: 'Missing transcoder data' };
+
+      const videoId = originalKey.split('-')[0];
+      const fullCloudFrontUrl = `${process.env.CLOUDFRONT_URL}/${hlsUrl}`;
+
+      console.log(`Webhook: Video ${videoId} is READY. Updating URL...`);
+
+      return this.prisma.video.update({
+        where: { id: videoId },
+        data: {
+          status: 'READY',
+          hlsUrl: fullCloudFrontUrl,
+        },
+      });
+    }
+
+    if (detailType === 'Video.Analyzed') {
+      const { originalKey, description } = payload.detail;
+      if (!originalKey || !description)
+        return { skipped: true, reason: 'Missing AI data' };
+
+      const videoId = originalKey.split('-')[0];
+
+      console.log(
+        `Webhook: AI generated description for Video ${videoId}. Saving to DB...`,
+      );
+
+      return this.prisma.video.update({
+        where: { id: videoId },
+        data: {
+          description: description,
+        },
+      });
+    }
+
+    return { skipped: true, reason: 'Unknown event type' };
   }
 }

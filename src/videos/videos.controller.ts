@@ -43,6 +43,6 @@ export class VideosController {
 
   @Post('webhook')
   async handleWebhook(@Body() videoWebhookDto: VideoWebhookDto) {
-    return this.videosService.handleTranscoderWebhook(videoWebhookDto);
+    return this.videosService.handleAwsWebhook(videoWebhookDto);
   }
 }
