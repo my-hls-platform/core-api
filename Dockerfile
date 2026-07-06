@@ -1,25 +1,27 @@
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+RUN npm install -g pnpm
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install
 
-# Копіюємо код
 COPY . .
 RUN DATABASE_URL="mysql://user:password@localhost:3306/dummy" npx prisma generate
-RUN npm run build
-FROM node:22-alpine AS runner
+RUN pnpm run build
+
+FROM node:24-alpine AS runner
 
 WORKDIR /app
-
-COPY package.json ./
-RUN npm install --omit=dev
+RUN npm install -g pnpm
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --prod
 
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
 
-ENV PORT=3000
-EXPOSE 3000
+ENV PORT=3001
+EXPOSE 3001
 
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/main.js"]
