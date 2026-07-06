@@ -16,4 +16,4 @@ RUN pnpm run build
 ENV PORT=3001
 EXPOSE 3001
 
-CMD ["sh", "-c", "(npx -y prisma@7.8.0 db push --accept-data-loss || true) && node dist/main.js"]
+CMD ["sh", "-c", "(npx -y prisma@7.8.0 db push --accept-data-loss || true) && node dist/src/main.js"]
