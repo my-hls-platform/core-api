@@ -1,26 +1,25 @@
-FROM --platform=linux/amd64 node:24-alpine AS builder
+
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 RUN npm install -g pnpm
-
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --ignore-scripts
 
 COPY . .
-
 RUN DATABASE_URL="mysql://user:pass@127.0.0.1:3306/dummy" npx prisma generate
 RUN pnpm run build
 
-
-FROM --platform=linux/amd64 node:24-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 RUN npm install -g pnpm
 
+
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --ignore-scripts
 
-RUN pnpm add dotenv
+RUN pnpm add dotenv --ignore-scripts
 
 COPY prisma ./prisma
 COPY prisma.config.ts ./
