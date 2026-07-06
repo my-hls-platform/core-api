@@ -1,4 +1,4 @@
-name: Build and Push NestJS to AWS ECR & App Runner
+name: Build and Push NestJS to AWS ECR & ECS
 
 on:
   push:
@@ -38,53 +38,22 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$LATEST_TAG
 
-      - name: Deploy to AWS App Runner via CLI
+      - name: Deploy to Amazon ECS Fargate
         env:
-          SERVICE_NAME: hls-core-api-service
+          CLUSTER_NAME: ${{ secrets.ECS_CLUSTER_NAME }}
+          SERVICE_NAME: ${{ secrets.ECS_SERVICE_NAME }}
           IMAGE_URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          ACCESS_ROLE_ARN: ${{ secrets.APP_RUNNER_ACCESS_ROLE_ARN }}
-          INSTANCE_ROLE_ARN: ${{ secrets.APP_RUNNER_INSTANCE_ROLE_ARN }}
-          VPC_CONNECTOR_ARN: ${{ secrets.APP_RUNNER_VPC_CONNECTOR_ARN }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PORT: '3001'
+          DB_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)
+          TASK_DEF_ARN=$(aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --query "services[0].taskDefinition" --output text)
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_DEF_ARN --query taskDefinition)
 
-          SOURCE_CONFIG=$(jq -n \
-            --arg role "$ACCESS_ROLE_ARN" \
-            --arg img "$IMAGE_URI" \
-            --arg port "$PORT" \
-            --arg db "$DATABASE_URL" \
-            '{
-              AuthenticationConfiguration: { AccessRoleArn: $role },
-              ImageRepository: {
-                ImageIdentifier: $img,
-                ImageRepositoryType: "ECR",
-                ImageConfiguration: {
-                  Port: $port,
-                  RuntimeEnvironmentVariables: { DATABASE_URL: $db, PORT: $port }
-                }
-              }
-            }')
-            
-          INSTANCE_CONFIG=$(jq -n \
-            --arg role "$INSTANCE_ROLE_ARN" \
-            '{
-              InstanceRoleArn: $role,
-              Cpu: "1 vCPU",
-              Memory: "2 GB"
-            }')
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$IMAGE_URI" --arg DB "$DB_URL" '
+            .containerDefinitions[0].image = $IMAGE |
+            (.containerDefinitions[0].environment[] | select(.name == "DATABASE_URL")).value = $DB |
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+          ')
 
-          NETWORK_CONFIG=$(jq -n \
-            --arg vpc "$VPC_CONNECTOR_ARN" \
-            '{
-              EgressConfiguration: { EgressType: "VPC", VpcConnectorArn: $vpc }
-            }')
-
-          if [ -z "$SERVICE_ARN" ]; then
-            echo "Creating new App Runner service..."
-            aws apprunner create-service --service-name $SERVICE_NAME --source-configuration "$SOURCE_CONFIG" --instance-configuration "$INSTANCE_CONFIG" --network-configuration "$NETWORK_CONFIG"
-          else
-            echo "Updating existing App Runner service..."
-            aws apprunner update-service --service-arn $SERVICE_ARN --source-configuration "$SOURCE_CONFIG" --instance-configuration "$INSTANCE_CONFIG" --network-configuration "$NETWORK_CONFIG"
-          fi
+          aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" > new_task.json
+          NEW_REVISION=$(jq -r '.taskDefinition.taskDefinitionArn' new_task.json)
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --task-definition $NEW_REVISION --force-new-deployment
